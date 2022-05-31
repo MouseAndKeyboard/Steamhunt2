@@ -1,0 +1,28 @@
+version: "3.8"
+services:
+  db:
+    image: mongo
+    container_name: mongo_db
+    volumes:
+      - mongodata:/data/db
+    networks:
+      backend:
+        aliases:
+          - "mongodb"
+
+  scraper:
+    image: steamhunt/sid-scraper
+    environment:
+      - MONGO_URI=mongodb://mongodb/
+    networks:
+      - backend
+    depends_on:
+      - db
+
+
+networks:
+  backend:
+    driver: "bridge"
+
+volumes:
+  mongodata:

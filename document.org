@@ -1,0 +1,457 @@
+#+TITLE: Document
+
+
+* Image trie
+
+#+CAPTION: Clean profile icon image
+#+NAME: fig:PLAIN-dolphin
+[[./img/dolphin_plain.jpg]]
+
+#+CAPTION: Noisy profile icon image
+#+NAME: fig:NOISY-dolphin
+[[./img/dolphin_noise.jpg]]
+
+#+NAME: avg_image
+#+BEGIN_SRC python
+import numpy as np
+
+def img_avg(img):
+    avg_colour_per_row = np.average(img, axis=0)
+    avg_colour = np.average(avg_colour_per_row, axis=0)
+    return avg_colour
+#+END_SRC
+
+#+RESULTS: avg_image
+: None
+
+#+BEGIN_SRC python :var plain_path="./img/dolphin_plain.jpg" noise_path="./img/dolphin_noise.jpg" :results output
+
+import numpy as np
+import cv2
+
+IMAGE_SIZE = 32
+
+def img_avg(img):
+    avg_colour_per_row = np.average(img, axis=0)
+    avg_colour = np.average(avg_colour_per_row, axis=0)
+    return avg_colour
+
+class QuadTree:
+    def __init__(self, content, size, parent):
+        self.parent = parent
+        self.size = size
+        self.img = content
+        self.ne = None
+        self.nw = None
+        self.se = None
+        self.sw = None
+        self.avg = img_avg(content)
+
+    def subdivide(self, depth):
+        child_size = self.size / 2
+        self.ne = QuadTree(self.image[:16, 16:], child_size, self)
+        self.nw = QuadTree(self.image[:16, :16], child_size, self)
+        self.se = QuadTree(self.image[16:, 16:], child_size, self)
+        self.sw = QuadTree(self.image[16:, :16], child_size, self)
+
+    def create_subdivided(self):
+        child_size = self.size / 2
+        ne = QuadTree(self.image[:16, 16:], child_size, self)
+        nw = QuadTree(self.image[:16, :16], child_size, self)
+        se = QuadTree(self.image[16:, 16:], child_size, self)
+        sw = QuadTree(self.image[16:, :16], child_size, self)
+        new = QuadTree(self.img, self.size, self)
+        new.ne = ne
+        new.nw = nw
+        new.se = se
+        new.sw = sw
+        return new
+
+    def __eq__(self, other):
+        if (self.ne == None):
+            if (other.ne == None):
+                print(f"{self.avg[0]} == {other.avg[0]} and {self.avg[1]} == {other.avg[1]} and {self.avg[2]} == {other.avg[2]}")
+                return int(self.avg[0]) == int(other.avg[0]) and int(self.avg[1]) == int(other.avg[1]) and int(self.avg[2]) == int(other.avg[2])
+            raise Exception("Can't compare QuadTrees of different sizes")
+
+        return self.ne == other.ne and self.nw == other.nw and self.se == other.se and self.sw == other.sw
+
+class Trie:
+    def __init__(self, qt):
+        # self.children = [(Quadtree, Trie)]
+        self.children = []
+        self.qt = qt
+
+    def divide_self(self):
+        # Creates a new child where the qt is a higher resolution
+
+
+    def add_child(self, image_qt):
+        node, found, qt = self.find(image_qt)
+        if not found:
+            node.children.append((image_qt, Trie()))
+            return True
+        else:
+            # need to check that the actual images are the same
+            np.array_equal(image_qt.img, qt)
+            return False
+
+    def find(self, image_qt):
+        for child in self.children:
+            child_qt, child_trie = child
+            if image_qt == child_qt:
+                if not child_trie.children:
+                    return child_trie, True, child_qt
+                else:
+                    return child_trie.find(image_qt)
+        return self, False, None
+
+    def __str__(self):
+        return f"children: {len(self.children)}"
+
+    def __repr__(self):
+        return str(self)
+
+T = Trie()
+
+plain = cv2.imread(plain_path)
+plain_qt = QuadTree(plain, IMAGE_SIZE, None)
+inserted_plain = T.add_child(plain_qt)
+
+noise = cv2.imread(noise_path)
+noise_qt = QuadTree(noise, IMAGE_SIZE, None)
+inserted_noise = T.add_child(noise_qt)
+
+node, f, qt = T.find(plain_qt)
+node2, f2, qt = T.find(noise_qt)
+
+print(T)
+print(node, f)
+print(node2, f2)
+print(inserted_plain, inserted_noise)
+
+#+END_SRC
+
+** Version 2
+#+BEGIN_SRC python :noweb yes :var plain_dir="img/plain/" noise_dir="img/noise/" :results output
+
+<<avg_image>>
+
+IMAGE_SIZE = 32
+
+class AvgImage:
+    def __init__(self, image: np.ndarray, divisions):
+        if divisions > 32:
+            raise ValueError("Can't divide the image by more than 32 bits")
+        self.avg = img_avg(image)
+        self.divisons = divisions
+        self.terminal = True
+        # self.subdata = TrieData(image)
+        self.terminal_data = TrieData(image)
+        self.children = None
+        self.set_divisions(image, divisions)
+
+    def set_children(self, children):
+        assert not terminal, "Make sure image is non-terminal before setting children"
+        assert isinstance(children, AvgImageDatastore), "Children must be AvgImageDatastore type"
+        self.children = children
+        self.terminal_data = None
+
+    def set_terminal_data(self, terminal_data):
+        assert terminal, "Make sure image is terminal before setting terminal data"
+        assert isinstance(terminal_data, TrieData), "terminal_data must be TrieData type"
+        self.terminal_data = terminal_data
+        self.children = None
+
+    def get_children(self):
+        assert not terminal, "Make sure image is non-terminal before getting children"
+        return self.children
+
+    def get_terminal_data(self):
+        assert not terminal, "Make sure image is terminal before getting terminal_data"
+        return self.terminal_data
+
+    def set_divisions(self, image, count):
+        if count > 0:
+            self.terminal = False
+            self.set_children(SubTrie(
+                AvgImage(image[:16, 16:], count - 1),
+                AvgImage(image[:16, :16], count - 1),
+                AvgImage(image[16:, 16:], count - 1),
+                AvgImage(image[16:, :16], count - 1)
+            ))
+
+    def subdivided(self):
+        if not self.terminal:
+            raise Exception("can't subdivide non-terminal")
+        return AvgImage(self.get_terminal_data().data, self.divisons + 1)
+
+    def __eq__(self, other):
+        if self.divisons != other.divisons:
+            raise TypeError("Images must have same division level to be comparable")
+
+        if (self.divisons == 0):
+            return int(self.avg[0]) == int(other.avg[0]) and int(self.avg[1]) == int(other.avg[1]) and int(self.avg[2]) == int(other.avg[2])
+
+        self_terminal_data = get_terminal_data(self)
+        return self.subdata.ne == other.subdata.ne and self.subdata.nw == other.subdata.nw and self.subdata.se == other.subdata.se and self.subdata.sw == other.subdata.sw
+
+
+class SubTrie():
+    def __init__(self, ne, nw, se, sw):
+        self.ne = ne
+        self.nw = nw
+        self.se = se
+        self.sw = sw
+
+class TrieData():
+    def __init__(self, data):
+        self.data = data
+
+# returns:
+# if_image_found, image_which_was_found, deepest_datastore
+#
+# if_image_found:        True if image was found, false otherwise
+# image_which_was_found: The AvgImage which matched
+# deepest_datastore:     The datastore containing the match, or the datastore containing the closest matches
+class AvgImageDatastore():
+    def __init__(self):
+        self.images = []
+
+    def find_image(self, image):
+        # assuming image is always divided in a good way
+        for img in self.images:
+            if not isinstance(img.subdata, AvgImageDatastore):
+                print(f"img: {img} subdata isn't a datastore")
+            if (image == img):
+                # img will either have data or will have an AvgImageDatastore
+                if img.terminal:
+                    return True, img, self
+                else:
+                    # nonterminal
+                    return False, None, None
+                    assert isinstance(img.subdata, AvgImageDatastore), "img subdata must be a datastore"
+                    return img.subdata.find_image(image.subdivided())
+
+        return False, None, self
+
+    # add an AvgImage into the datastore
+    def add_image(self, image: AvgImage):
+        for child_img in self.images:
+            if image == child_img:
+                # img may either already have children, or it may be terminal
+                if child_img.terminal:
+                    # if it is terminal we know that its subdata MUST be an image
+                    child_image = child_img.subdata
+                    new_child_store = AvgImageDatastore()
+                    new_child_store.add_image(child_img.subdivided())
+                    child_img.subdata = new_child_store
+                    child_img.terminal = False
+                    child_img.subdata.add_image(image.subdivided())
+                else:
+                    child_img.subdata.add_image(image.subdivided())
+        else:
+            self.images.append(image)
+
+import cv2
+import os
+
+datastore = AvgImageDatastore()
+
+plain_paths = os.listdir(plain_dir)
+for plain_path in plain_paths:
+    plain = cv2.imread(plain_dir + plain_path)
+    plainImg = AvgImage(plain, 0)
+    datastore.add_image(plainImg)
+    print(f"Inserted: {plain_path}")
+
+noise_paths = os.listdir(noise_dir)
+for noise_path in noise_paths:
+    noise = cv2.imread(noise_dir + noise_path)
+    noiseImg = AvgImage(noise, 0)
+    found = False
+    found, _, _ = datastore.find_image(noiseImg)
+    print(f"Found: \t\t{noise_path}" if found else f"Not Found:\t{noise_path}")
+
+
+#+END_SRC
+
+** Version 3
+
+#+BEGIN_SRC python :noweb yes :var plain_dir="img/plain/" noise_dir="img/noise/" :results output
+
+<<avg_image>>
+
+IMAGE_SIZE = 32
+
+class QuadImage:
+    def __init__(self, high_res_image: np.ndarray, divisions: int):
+        if divisions > 5:
+            raise ValueError("Can't divide the image by more than 5 times")
+
+        self.divisions = divisions
+
+        self.image_representation = np.zeros(shape=(2**divisions, 2**divisions, 3))
+        # pixels_per_cell
+        ppc = int(IMAGE_SIZE / 2**divisions)
+
+        for row in range(divisions):
+            for col in range(divisions):
+                colstart = col*ppc
+                colend = (col + 1)*ppc
+                rowstart = row*ppc
+                rowend = (row + 1)*ppc
+                self.image_representation[row][col] = img_avg(high_res_image[colstart:colend, rowstart:rowend])
+
+    def __eq__(self, other):
+        assert type(self) == type(other), "types must be the same"
+        assert self.divisions == other.divisions, f"cannot compare divsions: {self.divisions} and divisions: {other.divisions} quadimages"
+        return np.allclose(self.image_representation, other.image_representation, rtol=0, atol=1)
+
+class RootImg(QuadImage):
+    def __init__(self):
+        self.divisions = -1
+
+    def __eq__(self, other):
+        raise Exception("Should not be comparing to root node")
+
+class QuadImageQuery:
+    def __init__(self, high_res_image: np.ndarray):
+        self.divisions = 0
+        self.initial_image = high_res_image
+        self.quad_image = QuadImage(self.initial_image, self.divisions)
+
+    def divided(self):
+        divided_query = QuadImageQuery(self.initial_image)
+        divided_query.divisions = self.divisions + 1
+        divided_query.quad_image = QuadImage(self.initial_image, self.divisions + 1)
+
+        return divided_query
+
+    def set_divisions(self, count):
+        self.quad_image = QuadImage(self.initial_image, count)
+        self.divisions = count
+
+class Node:
+    def is_terminal(self):
+        raise NotImplementedError("Need to know if terminal or not")
+
+    # returns the parent of the child node
+    def add_child(self, new_child: QuadImageQuery):
+        raise NotImplementedError("Need to implement adding children")
+
+    def find(self, target: QuadImageQuery):
+        raise NotImplementedError("Need to implement finding child")
+
+class TerminalNode(Node):
+    def __init__(self, quadimage: QuadImage, full_res_image: np.ndarray):
+        self.quad_image = quadimage
+        self.term_full_res_image = full_res_image
+        self.terminal_data = None
+
+    def is_terminal(self):
+        return True
+
+    def set_terminal_data(self, terminal_data):
+        self.terminal_data = terminal_data
+
+    def get_terminal_data(self):
+        return self.terminal_data
+
+class BranchingNode(Node):
+    def __init__(self, quadimage: QuadImage):
+        self.quad_image = quadimage
+        self.children = [] # list of branching or terminal nodes
+
+    def is_terminal(self):
+        return False
+
+    def find(self, target: QuadImageQuery):
+        for child in self.children:
+            if target.quad_image == child.quad_image:
+                if not child.is_terminal():
+                    divided = target.divided()
+                    found, location = child.find(divided)
+                    if found:
+                        # exact match has been found, return true and location
+                        return True, location
+                    else:
+                        # no exact match found, return closest branching node
+                        return False, location
+                else:
+                    return True, self
+
+        # not in any of the children, this is the "deepest" location of the search
+        return False, self
+
+    def add_child(self, new_child: QuadImageQuery):
+        assert new_child.quad_image.divisions == self.quad_image.divisions + 1, f"New child has divisions: {new_child.quad_image.divisions} but should be {self.quad_image.divisions + 1}"
+
+        for index, child in enumerate(self.children):
+            if new_child.quad_image == child.quad_image:
+                divided = new_child.divided()
+                if not child.is_terminal():
+                    assert divided.quad_image.divisions == child.quad_image.divisions + 1, f"Adding child with {divided.quad_image.divisions} divisions to parent with {child.quad_image.divisions} divisions"
+                    return child.add_child(divided)
+                else:
+                    # Create branching node, have "self" be a child of this branching node, have "new_child" be a child of this branching node
+                    # might need to maintain a reference to a parent for this
+                    new_branching = BranchingNode(child.quad_image)
+                    original_divisions = child.quad_image.divisions
+
+                    origin_clone = QuadImageQuery(child.term_full_res_image)
+                    origin_clone.set_divisions(original_divisions)
+                    original = origin_clone.divided()
+                    assert new_branching.quad_image.divisions == child.quad_image.divisions, ""
+                    assert origin_clone.quad_image.divisions == child.quad_image.divisions, "bruh"
+                    assert original.quad_image.divisions == new_branching.quad_image.divisions + 1, f"Original divisions: {original.quad_image.divisions}, New_branching divisions: {new_branching.quad_image.divisions}, self divisions: {self.quad_image.divisions}"
+                    assert divided.quad_image.divisions == new_branching.quad_image.divisions + 1, f"divided divisions: {divided.quad_image.divisions}, New_branching divisions: {new_branching.quad_image.divisions}"
+                    new_branching.add_child(original)
+                    new_branching.add_child(divided)
+                    self.children[index] = new_branching
+                    assert self.children[index].quad_image.divisions == self.quad_image.divisions + 1
+                    return self.children[index]
+
+        new_child_node = TerminalNode(new_child.quad_image, new_child.initial_image)
+        assert new_child_node.quad_image.divisions == self.quad_image.divisions + 1
+
+        self.children.append(new_child_node)
+        return self
+
+import cv2
+import os
+
+root_img = RootImg()
+root = BranchingNode(root_img)
+
+plain_paths = os.listdir(plain_dir)
+for plain_path in plain_paths:
+    plain = cv2.imread(plain_dir + plain_path)
+    plainImg = QuadImageQuery(plain)
+    assert plainImg.quad_image.divisions == 0
+    root.add_child(plainImg)
+    print(f"Inserted: {plain_path}")
+
+noise_paths = os.listdir(noise_dir)
+for noise_path in noise_paths:
+    noise = cv2.imread(noise_dir + noise_path)
+    noiseImg = QuadImageQuery(noise)
+    found, loc = root.find(noiseImg)
+    print(f"Found: \t\t{noise_path}" if found else f"Not Found:\t{noise_path}, nearest: {len(loc.children)}")
+
+
+#+END_SRC
+
+#+RESULTS:
+: Inserted: cat.jpg
+: Inserted: face.jpg
+: Inserted: face_noised.jpg
+: Inserted: dolphin.jpg
+: Found: 		face.jpg
+: Found: 		face_noised.jpg
+: Not Found:	cat_altered_noised.jpg, nearest: 3
+: Found: 		cat_noised.jpg
+: Found: 		dolphin_noised.jpg
+
+** Blur Hash
+...
